@@ -1,0 +1,283 @@
+---
+title: "Perspectives on computational analysis - PS2"
+author: "Maria Adelaida Martinez Cabrera"
+date: "10/17/2018"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = 'C:/Users/USER/Uchicago/Perspectives on Computational Analysis Fall 2018/persp-analysis_A18/Assignments/A2')
+library(plyr)
+```
+
+# Question 1
+
+**Imputing age and gender (3 points). You have a dataset called BestIncome.txt that has 10,000 observations on four variables: labor income,capital income, height, weight. You have another dataset from a government survey called SurveyIncome.txt that has 1,000 observations on four variables: total income, weight, age, and gender. You want to use the BestIncome.txt data, but you need age and gender variables.**
+
+\textbf{a)}Propose a strategy for imputing age and gender variables into the BestIncome.txt data by using information from the SurveyIncome.txt data. Describe your proposed method, including equations.
+
+One possible strategy to impute age and gender from SurveyIncome.txt to BestIncome.txt is using a linear model. In this case, the variables that we can use in the model are weight and total income that are the ones that we have in both data sets. We define total income as the sum of capital and labor income in the BestIncome data set. 
+
+More specifically, the model that we will run for age is: 
+
+$age_{i} = \beta _{0} + \beta_{1}tot\_income_{i} + \beta_{2}weight_{i} + \epsilon$
+
+and we are going to predict the age using the estimated coefficients on the BestIncome data:
+
+$\hat{age_{i}} = \hat{\beta _{0}} + \hat{\beta_{1}}tot_income_{i} + \hat{\beta_{2}weight_{i}}$
+
+The model for gender is: 
+
+$female _{i} = \alpha _{0} + \alpha_{1}tot\_income_{i} + \alpha_{2}weight_{i} + \epsilon$
+
+Given that gender is a binary variable, the second equation is going to be a linear probability model where the predicted values are continuous probabilities of being female given a certain level of total income and weight. To transform this predicted values into a binary variable, we are going to assign female if the predicted probability is higher than 0.5 (male otherwise).
+
+$\hat{\mathbf{P}[female_{i}]} = \hat{\alpha_{0}} + \hat{\alpha_{1}}tot\_income_{i} + \hat{\alpha_{2}weight_{i}}$
+
+$\hat{female_{i}} = 1$ if $\hat{\mathbf{P}[female_{i}]} > 0.5$
+
+Before we use this strategy is useful to visualize the data and see the basic statistics.First, we did plots of age on income and weight. In this case, we don't see any clear pattern or functional form. Because of that, the model we are going to use is going to be linear in all parameters. Second, we did histograms of weight and income by gender. As we can see in the histograms, there are ranks of weight and income where we can perfectly predict the gender.  More specifically: all the individuals with weight lower than 139.6lbs or with income lower than 49,743.3 are women, and individuals with weight higher than 155lbs or income higher than 88,686.3 are men.
+
+
+```{r echo=FALSE}
+#Open data set
+SurvIncome <- read.csv("C:/Users/USER/Uchicago/Perspectives on Computational Analysis Fall 2018/persp-analysis_A18/Assignments/A2/SurvIncome.txt", header=FALSE)
+
+#Rename variables
+SurvIncome <- rename(SurvIncome, c("V2"= "weight"))
+SurvIncome <- rename(SurvIncome, c("V1"= "tot_inc"))
+SurvIncome <- rename(SurvIncome, c("V3"= "age"))
+SurvIncome <- rename(SurvIncome, c("V4"= "female"))
+
+#Plot age weight
+plot(SurvIncome$weight, SurvIncome$age, xlab="Weight in lbs", ylab="Age in years")
+
+#Plot age income
+plot(SurvIncome$tot_inc, SurvIncome$age, xlab="Income in Us dollars", ylab="Age in years")
+
+#Reg age on income and weight
+ols_age<- lm(SurvIncome$age~ SurvIncome$tot_inc+SurvIncome$weight)
+summary(ols_age)
+
+#Histogram gender weight 
+par(mfrow=c(1, 2))
+hist(SurvIncome$weight[SurvIncome$female==1], main="Female",
+xlab="Weight in lbs",col="coral1")
+hist(SurvIncome$weight[SurvIncome$female==0],main="Male",
+xlab="Weight in lbs", col="navy")
+
+#Summary statistics by gender
+mean <- tapply (SurvIncome$weight,SurvIncome$female, mean)
+max <- tapply (SurvIncome$weight,SurvIncome$female, max)
+min <- tapply (SurvIncome$weight,SurvIncome$female, min)
+cbind(mean, min, max)
+
+#Histogram gender income
+par(mfrow=c(1, 2))
+hist(SurvIncome$tot_inc[SurvIncome$female==1], main="Female",
+xlab="Total Income in US dollars",col="coral1")
+hist(SurvIncome$tot_inc[SurvIncome$female==0],main="Male",
+xlab="Total Income in US dollars", col="navy")
+
+#Summary statistics by gender
+mean <- tapply (SurvIncome$tot_inc,SurvIncome$female, mean)
+max <- tapply (SurvIncome$tot_inc,SurvIncome$female, max)
+min <- tapply (SurvIncome$tot_inc,SurvIncome$female, min)
+cbind(mean, min, max)
+
+#Reg gender on income and weight
+ols_fem<- lm(SurvIncome$female~ SurvIncome$tot_inc+SurvIncome$weight)
+summary(ols_fem)
+
+```
+
+**b)**Using your proposed method from part (a), impute the variables age and gender into the BestIncome.txt data.
+
+**Code**
+
+```{r echo=FALSE}
+#Open data set
+BestIncome <- read.csv("C:/Users/USER/Uchicago/Perspectives on Computational Analysis Fall 2018/persp-analysis_A18/Assignments/A2/BestIncome.txt", header=FALSE)
+
+#Rename variables
+BestIncome <- rename(BestIncome, c("V1"= "lab_inc"))
+BestIncome <- rename(BestIncome, c("V2"= "cap_inc"))
+BestIncome <- rename(BestIncome, c("V3"= "height"))
+BestIncome <- rename(BestIncome, c("V4"= "weight"))
+
+BestIncome$tot_inc <- BestIncome$lab_inc + BestIncome$cap_inc
+
+#Impute variables: 
+#1)Probability of being female according to a linear probability model
+#coefficients(ols_fem)
+BestIncome$prob_fem <- 3.761142e+00 + -5.249560e-06*BestIncome$tot_inc +  -1.953025e-02*BestIncome$weight
+
+#Conditioning on the probability predict the gender
+BestIncome$female <- ifelse(BestIncome$prob_fem>0.5,1,0)
+
+#2)Age according to an OLS linear in weight and income
+#coefficients(ols_age)
+BestIncome$age <-  44.2096668124 + 0.0000252022*BestIncome$tot_inc + -0.0067221442*BestIncome$weight
+
+```
+
+**c)** Report the mean, standard deviation, minimum, maximum and number of
+observations for your imputed age and gender variables.
+
+```{r echo=FALSE}
+mean_age <- mean (BestIncome$age)
+mean_female <- mean(BestIncome$female)
+lenght_age <- length (BestIncome$age)
+lenght_female <- length(BestIncome$female)
+min_age <- min (BestIncome$age)
+min_female <- min (BestIncome$female)
+max_age <- max (BestIncome$age)
+max_female <- max(BestIncome$female)
+sd_age <- sd(BestIncome$age)
+sd_female <- sd(BestIncome$female)
+
+#Age summary statistics
+cbind(mean_age, lenght_age, min_age, max_age, sd_age)
+
+#Gender summary statistics
+cbind(mean_female, lenght_female, min_female, max_female, sd_female)
+
+```
+
+**d)**Report the correlation matrix for the now six variables: labor income, capital income cap inci, height, weight, age,
+and gender in the BestIncome.txt data.
+
+```{r echo=FALSE}
+BestIncome$tot_inc <- NULL
+BestIncome$prob_fem <- NULL
+
+#Estimate correlation matrix
+res <- cor(BestIncome)
+round(res, 4)
+
+#Correlation plot 
+library(corrplot)
+corrplot(res, type = "upper", order = "hclust", tl.col = "black")
+
+```
+
+\pagebreak
+
+# Question 2
+
+**Stationarity and data drift (4 points). Suppose you are interested in question that Salganik (2018) brings up in Chapter 2, namely, "Is higher intelligence associated with higher income?" Suppose that you wanted to test the hypothesis that higher intelligence is associated with higher income using two of the variables in the dataset IncomeIntel.txt. This dataset consists of 1,000 observations of university students who applied to graduate school in the United States over the time period 2001 to 2013. The dataset contains three variables on each observation: year of graduation, GRE quantitative score, and income 4 years after graduation. It is worth noting that the GRE quantitative scoring scale changed in 2011. You want to perform a simple linear regression of the following form to test this hypothesis,**
+
+$$salaryp4_{i}= \beta_{0} + \beta_{1}gre\_qnt_{i} + \varepsilon_{i}$$
+
+where $\beta_{0}$ and $\beta_{1}$ are regression coefficients and $\varepsilon_{i}$ is an error term that is assumed to be normally distributed.
+
+**a)**Estimate the coefficients in the regression above by ordinary least squares without making any changes to the data. Report your estimated coeffi-
+cients and standard errors on those coefficients.
+
+```{r echo=FALSE}
+#Open data set
+IncomeIntel <- read.csv("C:/Users/USER/Uchicago/Perspectives on Computational Analysis Fall 2018/persp-analysis_A18/Assignments/A2/IncomeIntel.txt", header=FALSE)
+
+#Rename variables
+IncomeIntel <- rename(IncomeIntel, c("V1"= "year"))
+IncomeIntel <- rename(IncomeIntel, c("V2"= "gre_qnt"))
+IncomeIntel <- rename(IncomeIntel, c("V3"= "salary"))
+
+#Regression salary on GRE
+ols_salary_a <- lm(IncomeIntel$salary ~ IncomeIntel$gre_qnt)
+summary(ols_salary_a)
+
+```
+
+**b)**Create a scatter plot of GRE quantitative score on the y-axis
+and graduation year on the x-axis. Do any problems jump out in this variable and your ability to use it in testing your hypothesis? Propose and implement a solution for using this variable in your regression.
+
+As we can see in the plot of GRE on graduation year, the GRE scored scale change in 2011. To fix this, we download the table that converts the GRE score from pre-2011 to post-2011 scale (GreConv.csv) and merges it to IncomeIntel.txt.  The steps we followed were these:
+
+**1)** Given that the GRE scores are in continuous and with decimals in IncomeIntel.txt, and in multiples of 10 in GreConv.csv, we round the gre_qnt values of IncomeIntel.txt to the closest multiple of 10.
+
+**2)** Merge both data sets using this variable in IncomeInte.txt and the old_gre variable in the GreConv. 
+
+**3)** With both data sets merged through the pre-2011 scores, we create a new variable with post-2011 scores for everyone. This variable is equal to the merged values of post-2011 gre scores for graduation years previous to 2011 and the value of the original variable without decimal points for the years after 2011. 
+As we can see in the new plot, the problem was solved because all years are now on the same scale. However rounding the scores we clearly lost variance. 
+
+```{r echo=FALSE}
+plot(IncomeIntel$year, IncomeIntel$gre_qnt, xlab="Year", ylab="GRE Quantitative")
+
+IncomeIntel$aux <-round(IncomeIntel$gre_qnt, digits = 0)
+IncomeIntel$aux2 <- round(IncomeIntel$aux/10, digits = 0) 
+IncomeIntel$old_gre <- IncomeIntel$aux2*10
+
+GreConv <- read.csv("C:/Users/USER/Uchicago/Perspectives on Computational Analysis Fall 2018/persp-analysis_A18/Assignments/A2/GreConv.csv")
+
+IncomeIntel <- merge(IncomeIntel, GreConv,  by=c("old_gre"), all.x = TRUE)
+
+IncomeIntel$correct_gre <- ifelse(IncomeIntel$year>2010, IncomeIntel$aux, ifelse(IncomeIntel$year<2011, IncomeIntel$new_gre, NA))
+
+IncomeIntel$aux <- NULL
+IncomeIntel$aux2 <- NULL
+IncomeIntel$percentile <- NULL
+IncomeIntel$old_gre <- NULL
+IncomeIntel$new_gre <- NULL
+
+#Corrected plot
+plot(IncomeIntel$year, IncomeIntel$correct_gre, xlab="Year", ylab="GRE Quantitative post 2011 scale")
+
+#Regression salary on GRE corrected by change
+ols_salary_b <- lm(IncomeIntel$salary ~ IncomeIntel$correct_gre )
+summary(ols_salary_b)
+
+```
+
+**c)**Create a scatter plot of income 4 years after graduation on the y-axis and graduation year on the x-axis. Do any problems jump out in this variable and your ability to use it in testing your hypothesis? Propose and implement a solution for using this variable in
+your regression.
+
+Is clear from the scatter plot that the salary has an increasing tendency. The basic solution for this problem is to detrend the salary variable. One way is to add to the ols regresion the year variable or, as is done in this problem set detrend the variable and use it in the model. To detrend the variable we run an OLS of salary on the year variable, the residuals of these regression are the detrend salaries. Bassically what we are doing here is to purge the data from any time trend.
+
+```{r echo=FALSE}
+plot(IncomeIntel$year, IncomeIntel$salary, xlab="Year", ylab="Salary")
+
+ols_detrend <- lm(IncomeIntel$salary ~ IncomeIntel$year)
+
+IncomeIntel$det_salary <- resid(ols_detrend)
+
+plot(IncomeIntel$year, IncomeIntel$det_salary, xlab="Year", ylab="Salary")
+
+ols_salary_c <- lm(IncomeIntel$det_salary ~ IncomeIntel$gre_qnt )
+summary(ols_salary_c)
+
+```
+
+**d)**Using the changes you proposed in parts (b) and (c), re-estimate the regression coefficients with your updated salary and gre variables.Report your new estimated coefficients and standard errors on those coeffcients. How do these coefficients differ from those in part (a)? Interpret why your changes from parts (b) and (c) resulted in those changes in coefficient values? What does this suggest about the answer to the question?
+
+After we correct by the system drift and the stationarity of the data the coefficient on GRE loses its significance. The change in the scale and the positive trend of the salaries were driving the significant results in a). Both where confounding factors of the data that where showing a negative relationship between intelligence, measured by the GRE quantitative score, on future salary.  This new result suggests that there is no relationship between the GRE quantitative score and the salary. This doesn't mean that there is no relationship between intelligence and income, we might think that in this case, it might be that the GRE quantitative score is not measuring intelligence as a whole, but just a particular part of it.  
+ 
+
+```{r echo=FALSE}
+
+ols_salary_d <- lm(IncomeIntel$det_salary ~ IncomeIntel$correct_gre )
+summary(ols_salary_d)
+
+```
+
+\pagebreak
+
+# Question 3: Assessment of Kossinets and Watts (2009)
+
+This paper studies the origins of homophily in a particular U.S. university using e-mail data along with individual characteristics. More specifically, they ask, what are the relative roles of similarity and structural proximity on new tie formation? In other words, what is the relative change in the probability of a new tie in the network, corresponding to a unit change in similarity; and in what proportion the proximity of the individuals explains this change. The authors measured similarity regarding gender, age, status, field and year, as an aggregate measure that counts the number of matches that two individuals have over these attributes. Similarly, they measured structural proximity in network distance and number of shared classes. 
+
+To answer this question, the authors used three different data sources: 1) The logs of e-mail interactions within the university over one academic year, 2) a database of individual attributes 3) records of course registration recorded separately by semester. As is described in page 410, the authors categorized the variables in four groups: personal characteristics, organizational affiliations, course-related variables, and email related variables. The descriptions and definitions of each of these variables are in Appendix A.
+
+The period for which the data spans is one academic year composed by fall and spring semesters. The total number of observations used this paper is 30,396 out of 43,553 email users in the university network. The individuals were selected into the sample if they were active e-mail users during both semesters and if they exchanged e-mails with others during the academic year. For those 30,396 individuals, the authors collected 7,156,162 exchanged messages during 270 days of observation. The distribution of these observations between the different groups in the university is as follows: 21% undergraduate students, 27% graduate and professional students, 13% faculty members, 13.4% administrators, and staff, and 25% affiliates.
+
+Throughout the data cleaning process, the authors drop 13,157 individuals that where part of the entire sample of users, this represents approximately 30% of this sample. What this means is that they are doing all the analysis with only 70% percent of the users. Additionally, given that this sample is retrained only to e-mail accounts on the central university server this could be even less.  Dropping  30% of the total number of users might be in part the reason why they find that tie formation is a rare event on their network. It diminishes their ability to answer the research question because they have less variation in the specific event of study that is the formation of new ties. Along these lines the authors don't explain well why they are only using one academic year, it is possible to find more new ties if they take into account more than one academic year, and relax the conditions for being an active e-mail user. 
+
+The underlying theoretical construct on the paper are the social relations between individuals. However, is difficult to think about e-mail logs as very personal social interactions between individuals. Daily we send and receive dozens of emails from people we don't know, and we can think about it as one of the less personal types of communication channel these days. To address this weakness of the data the authors try to select the sample of emails that, on their characteristics, look more personal than others. The authors choose the sample of emails with only one recipient and show how the results are robust using e-mails with up to five recipients.
+
+Nonetheless, the authors acknowledge that most of the interactions between individuals with a close relationship happen to be through different channels. A clear example is shown in the results where on average the undergraduate students had fewer contacts than the faculty. This doesn't mean that they have less social relations, it shows how the email measure of social relations is not accurate for that specific population. As the author states, this pattern might be explained by the popularity of other communication channels among undergraduates.
+
